@@ -1,0 +1,821 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<con:soapui-project id="2990b548-b7a3-493d-88c3-ba511757a1ab" activeEnvironment="Default" name="BEATT Tool" resourceRoot="" soapui-version="5.7.2" abortOnError="false" runType="SEQUENTIAL" xmlns:con="http://eviware.com/soapui/config">
+  <con:settings/>
+  <con:testSuite id="28710ea3-925a-4779-baa7-ef65d33101e7" name="Scripts">
+    <con:settings/>
+    <con:runType>SEQUENTIAL</con:runType>
+    <con:testCase id="dbe9ce60-75ec-420c-a449-109f1e4247d7" failOnError="true" failTestCaseOnErrors="true" keepSession="false" maxResults="0" name="Generate" searchProperties="true">
+      <con:settings/>
+      <con:testStep type="groovy" name="Generate HTML Report (experimental)" id="59c2ef96-33fa-412f-9356-b16dfab69325">
+        <con:settings/>
+        <con:config>
+          <script><![CDATA[import groovy.transform.Field
+import com.eviware.soapui.support.UISupport
+
+@Field def projects = com.eviware.soapui.SoapUI.getWorkspace().getProjectList()
+@Field def projectNames = ["Tax-Pro"]
+@Field def ignoreSuites = ["DEV (Old)", "SAT (Old)"]
+@Field def devEnvironment = ["DEV", "DEV-PWAS"]
+@Field def satEnvironment = ["SAT", "SAT-PWAS"]
+
+def projectFileDir = context.testCase.testSuite.project.path
+def projectFolderDir = new File(projectFileDir).getParentFile()
+def outputFolder = new File(projectFolderDir, "output")
+initializeFolder(outputFolder, true)
+
+def main(outputFolder) {
+    // verifyVariables()
+    processProjects(outputFolder)
+}
+
+def verifyVariables() {
+    log.info("Variables verified!")
+}
+
+def initializeFolder(File folder, Boolean clear = false) {
+    if (folder.exists()) {
+        if (clear) {
+            folder.eachFile { file ->
+                if (file.isDirectory()) clearFolder(file)
+                file.delete()
+            }
+            log.info("FOLDER [${folder.getName()}] already exists, clearing content")
+        } else {
+            log.info("FOLDER [${folder.getName()}] already exists, leaving as is")
+        }
+    } else {
+        folder.mkdirs()
+        log.info("FOLDER [${folder.getName()}] not found, creating new folder!")
+    }
+}
+
+def escapeForHTML(value) {
+    return value?.replaceAll("&", "&amp;")
+        ?.replaceAll("<", "&lt;")
+        ?.replaceAll(">", "&gt;")
+        ?.replaceAll("\"", "&quot;")
+        ?.replaceAll("'", "&#39;") ?: ""
+}
+
+def getRestCoverage(restTestStep) {
+    if (restTestStep.isDisabled()) return 'disabled'
+    def result = restTestStep.run(testRunner, context)
+    def status = result.getStatus();
+    log.info("${restTestStep.name}=====================")
+    log.info("Pass/Fail: " + status);
+    restTestStep.getAssertionList().each { assertion ->
+        log.info("${assertion.getClass().getSimpleName()}: ${assertion.getStatus()}")
+    }
+    return status.toString() == 'OK' ? 'y' : 'n'
+}
+
+def getAssertionResults(restTestStep) {
+    def notes = [];
+    restTestStep.getAssertionList().each { assertion ->
+        def assertionResult = assertion.getStatus().toString();
+        if(assertionResult == 'VALID') {
+            notes.add("${assertion.getClass().getSimpleName()}: PASSED")
+        }
+        else if(assertionResult == 'FAILED') {
+            notes.add("${assertion.getClass().getSimpleName()}: FAILED")
+        }
+        else {
+            notes.add("${assertion.getClass().getSimpleName()}: UNKNOWN")
+        }
+    }
+    return notes.join("\n");
+}
+
+def processProjects(outputFolder) {
+    projects.findAll { project -> projectNames.contains(project.name) }.each { project ->
+        def outputFilePath = "${outputFolder}/${project.name}-DATAEXPORT.html"
+        // log.info("Generating HTML for project: ${project.name}")
+
+        def writer = new File(outputFilePath).withWriter { writer ->
+            def id = 1
+            writeHtmlHeader(writer, project.name)
+
+            project.getTestSuiteList().each { testSuite ->
+                // def testSuite = testSuiteEntry.value
+                if (ignoreSuites.contains(testSuite.name)) return
+
+                writeSuiteRow(writer, testSuite.name)
+
+                testSuite.getTestCaseList().each { testCase ->
+                    // def testCase = testCaseEntry.value
+                    testCase.getTestStepList().each { testStep ->
+                        // def testStep = testStepEntry.value
+
+                        if (!(testStep instanceof com.eviware.soapui.impl.wsdl.teststeps.RestTestRequestStep)) {
+                            log.info("[ERROR]: Skipping test step - ${testStep.name} due to not being REST ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+                            return
+                        }
+
+                        def request = testStep.getHttpRequest()
+                        def resourcePath = request.path
+                        def httpMethod = request.method.toString()
+                        def dataMethods = getDataMethods(request)
+                                                def devCoverage = ""
+                                                def satCoverage = ""
+
+                        // JUST TO LIMIT TO 5 FOR PERFORMANCE
+                                                if(id < 5) {
+                                devCoverage = devEnvironment.contains(testSuite.name) ? getRestCoverage(testStep) : ""
+                                satCoverage = satEnvironment.contains(testSuite.name) ? getRestCoverage(testStep) : ""
+                                                }
+
+                        // Get assertion details if failed
+                        def assertionNotes = getAssertionResults(testStep);
+
+                        writeHtmlRow(writer, id, devCoverage, satCoverage, resourcePath, testCase.name, httpMethod, testStep.name, dataMethods, assertionNotes)
+                        id++
+                    }
+                }
+            }
+            writeHtmlFooter(writer)
+        }
+        log.info("HTML file generated at: ${outputFilePath}")
+    }
+}
+
+def getDataMethods(request) {
+    def dataMethods = []
+    if (!request.getRequestContent().isEmpty()) dataMethods.add("Request Body (JSON)")
+    if (!request.getParams().isEmpty()) dataMethods.add("Request Params")
+    if (!request.getRequestHeaders().isEmpty()) dataMethods.add("Header Params")
+    return dataMethods.join(", ")
+}
+
+def writeHtmlHeader(writer, projectName) {
+    writer.writeLine("""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <title>${projectName} Backend Tracker</title>
+            <style>
+                body { font-family: Arial, sans-serif; }
+                table { border-collapse: collapse; width: 100%; }
+                th, td { border: 1px solid #ddd; padding: 8px; }
+                th { background-color: #f2f2f2; }
+                .suite-row { font-weight: bold; background-color: #FFFF00; text-align: center; }
+            </style>
+        </head>
+        <body>
+            <h1>${projectName} Backend Automation Test Coverage</h1>
+            <table>
+                <tr>
+                    <th>ID</th>
+                    <th>DEV Coverage</th>
+                    <th>SAT Coverage</th>
+                    <th>Functional Coverage</th>
+                    <th>API</th>
+                    <th>Functionality</th>
+                    <th>Method</th>
+                    <th>Scenario</th>
+                    <th>Data Methods</th>
+                    <th>Notes</th>
+                </tr>
+    """)
+}
+
+def writeSuiteRow(writer, suiteName) {
+    writer.writeLine("<tr><td colspan='10' class='suite-row'>${escapeForHTML(suiteName)} SUITE</td></tr>")
+}
+
+def writeHtmlRow(writer, id, devCoverage, satCoverage, resourcePath, functionality, method, scenario, dataMethods, notes = "") {
+    writer.writeLine("""
+        <tr>
+            <td>${id}</td>
+            <td>${escapeForHTML(devCoverage)}</td>
+            <td>${escapeForHTML(satCoverage)}</td>
+            <td></td>
+            <td>${escapeForHTML(resourcePath)}</td>
+            <td>${escapeForHTML(functionality)}</td>
+            <td>${escapeForHTML(method)}</td>
+            <td>${escapeForHTML(scenario)}</td>
+            <td>${escapeForHTML(dataMethods)}</td>
+            <td>${notes}</td>
+        </tr>
+    """)
+}
+
+def writeHtmlFooter(writer) {
+    writer.writeLine("""
+            </table>
+        </body>
+        </html>
+    """)
+}
+
+main(outputFolder)
+
+UISupport.showInfoMessage("Script ran succesffully with no errors i think", "Task completed");]]></script>
+        </con:config>
+      </con:testStep>
+      <con:testStep type="groovy" name="Generate Snapshot" id="82243c6d-f601-4725-b2f4-cf0291348e29">
+        <con:settings/>
+        <con:config>
+          <script><![CDATA[import groovy.json.JsonOutput
+import com.eviware.soapui.support.UISupport
+
+// Define the output folder for snapshots
+def outputFolder = new File(context.testCase.testSuite.project.path).getParentFile()
+outputFolder = new File(outputFolder, 'snapshots')
+
+// Create a folder for today's date
+def dateFolder = new File(outputFolder, new Date().format('yyyy-MM-dd', TimeZone.getTimeZone('UTC')))
+initializeFolder(dateFolder, false)
+
+// Main function to process projects
+def main(outputFolder) {
+    try {
+        processProjects(outputFolder)
+    } catch (Exception e) {
+        log.error("Failed to process projects: ${e.message}")
+        log.error(e.stackTrace.join("\n"))
+        throw e
+    }
+}
+
+// Initialize a folder, optionally clearing it if it exists
+def initializeFolder(File folder, Boolean clear = false) {
+    if (folder.exists()) {
+        if (clear) {
+            folder.eachFile { file ->
+                if (file.isDirectory()) {
+                    clearFolder(file)
+                }
+                file.delete()
+            }
+            log.info("Cleared folder: ${folder.getName()}")
+        }
+    } else {
+        folder.mkdirs()
+        log.info("Created folder: ${folder.getName()}")
+    }
+}
+
+// Process all projects except the current one
+def processProjects(outputFolder) {
+    def allProjects = com.eviware.soapui.SoapUI.getWorkspace().getProjectList()
+    def currentProjectName = context.testCase.testSuite.project.name
+
+    allProjects.findAll { project ->
+        project.name != currentProjectName
+    }.each { project ->
+        def projectData = createProjectData(project)
+
+        // Create output file structure
+        def timestamp = new Date().format('yyyy-MM-dd_HH-mm-ss', TimeZone.getTimeZone('UTC'))
+        def jsonOutput = JsonOutput.prettyPrint(JsonOutput.toJson(projectData))
+        writeOutputFile(outputFolder, project, timestamp, jsonOutput)
+    }
+}
+
+// Create a data structure for a project
+def createProjectData(project) {
+    def projectData = [
+        projectName: project.name,
+        testSuites: [],
+        totalTestSuites: 0,
+        totalTestCases: 0,
+        totalPassedCases: 0,
+        totalFailedCases: 0,
+        totalAssertions: 0,
+        totalTestSteps: 0,
+        totalPassedSteps: 0,
+        totalFailedSteps: 0,
+    ]
+
+    project.getTestSuiteList().each { testSuite ->
+        def suiteData = createTestSuiteData(testSuite, projectData)
+        projectData.totalTestSuites++
+        projectData.testSuites << suiteData
+    }
+
+    return projectData
+}
+
+// Create a data structure for a test suite
+def createTestSuiteData(testSuite, projectData) {
+    def suiteData = [
+        testSuiteName: testSuite.name,
+        disabled: testSuite.isDisabled(),
+        status: 'passed',
+        testCases: []
+    ]
+
+    testSuite.getTestCaseList().each { testCase ->
+        def testCaseData = createTestCaseData(testCase, projectData, suiteData)
+        projectData.totalTestCases++
+        suiteData.testCases << testCaseData
+    }
+
+    return suiteData
+}
+
+// Create a data structure for a test case
+def createTestCaseData(testCase, projectData, suiteData) {
+    def testCaseData = [
+        testCaseName: testCase.name,
+        disabled: testCase.isDisabled() || suiteData.disabled || projectData.disabled,
+        status: 'passed',
+        testSteps: [],
+    ]
+
+    testCase.getTestStepList().each { testStep ->
+        def stepData = createTestStepData(testStep, projectData, suiteData, testCaseData)
+        projectData.totalTestSteps++
+        testCaseData.testSteps << stepData
+    }
+
+    return testCaseData
+}
+
+// Create a data structure for a test step
+def createTestStepData(testStep, projectData, suiteData, testCaseData) {
+    def stepData = [
+        testStepName: testStep.getName(),
+        disabled: testStep.isDisabled() || testCaseData.disabled || suiteData.disabled || projectData.disabled,
+        method: null,
+        endpoint: null,
+        resource: null,
+        pathParams: [:],
+        queryParams: [:],
+        headers: [:],
+        requestBody: [:],
+        assertions: [],
+        statusCode: 'passed',
+        message: null,
+    ]
+
+    if (testStep instanceof com.eviware.soapui.impl.wsdl.teststeps.RestTestRequestStep) {
+        if (!stepData.disabled) {
+            def result = testStep.run(testRunner, context)
+            stepData.statusCode = result.getStatus().toString()
+            stepData.message = result.getMessages().toString()
+        }
+        stepData.method = testStep.getHttpRequest().method.toString()
+        stepData.resource = testStep.getResourcePath()
+        stepData.endpoint = testStep.getHttpRequest().getEndpoint()
+        stepData.pathParams = testStep.getRestMethod().getParams().getPropertyNames().collectEntries { name ->
+            [(name): testStep.getRestMethod().getPropertyValue(name)]
+        }
+        stepData.headers = testStep.getHttpRequest().getRequestHeaders()
+        stepData.requestBody = testStep.getHttpRequest().getRequestContent()
+
+        testStep.getAssertionList().collect { assertion ->
+            def assertionData = createAssertionsData(assertion, stepData, projectData, suiteData, testCaseData)
+            projectData.totalAssertions++
+            stepData.assertions << assertionData
+        }
+    } else {
+        log.error("Unsupported test step type: ${testStep.getClass().getName()}")
+        return null
+    }
+
+    return stepData
+}
+
+// Create a data structure for an assertion
+def createAssertionsData(assertion, stepData, projectData, suiteData, testCaseData) {
+    def assertionData = [
+        type: assertion.getLabel(),
+        status: assertion.status.toString()
+    ]
+
+    if (assertion.status.toString() != 'VALID') {
+        stepData.statusCode = 'failed'
+        testCaseData.status = 'failed'
+        suiteData.status = 'failed'
+        projectData.status = 'failed'
+        
+        // projectData.totalFailedCases++
+        // projectData.totalFailedSteps++
+    } else {
+        // projectData.totalPassedCases++
+        // projectData.totalPassedSteps++
+    }
+
+    return assertionData
+}
+
+// Write the JSON output to a file
+def writeOutputFile(outputFolder, project, timestamp, jsonOutput) {
+    def dateFolder = new File(outputFolder, new Date().format('yyyy-MM-dd', TimeZone.getTimeZone('UTC')))
+    dateFolder.mkdirs()
+
+    def projectFolder = new File(dateFolder, project.name)
+    projectFolder.mkdirs()
+
+    def outputFilePath = "${projectFolder}/${timestamp}.json"
+    new File(outputFilePath).text = jsonOutput
+    log.info("JSON export written to: ${outputFilePath}")
+}
+
+// Start the main process
+main(outputFolder)
+
+UISupport.showInfoMessage("Snapshot(s) generated with no errors")]]></script>
+        </con:config>
+      </con:testStep>
+      <con:testStep type="groovy" name="Generate Snapshot CLASS" id="3117bedb-fe70-4ea4-8cc5-3a4d45c9203d">
+        <con:settings/>
+        <con:config><script><![CDATA[import groovy.json.JsonOutput
+import com.eviware.soapui.support.UISupport
+
+// Define output folder setup
+def outputFolder = new File(context.testCase.testSuite.project.path).getParentFile().getParentFile()
+outputFolder = new File(outputFolder, 'snapshots')
+def dateFolder = new File(outputFolder, new Date().format('yyyy-MM-dd', TimeZone.getTimeZone('America/New_York')))
+
+// Project Snapshot Class
+class ProjectSnapshot {
+    def project
+    def testRunner
+    def context
+    def data = [
+        projectName: '',
+        testSuites: [],
+        metrics: [
+            projectStatus: 'passed',
+            suiteCount: 0,
+            caseCount: 0,
+            passedCaseCount: 0,
+            failedCaseCount: 0,
+            assertionCount: 0,
+            stepCount: 0,
+            enabledStepCount: 0,
+            passedStepCount: 0,
+            failedStepCount: 0,
+            coveragePercentage: 0
+        ],
+    ]
+
+    ProjectSnapshot(project, testRunner, context) {
+        this.project = project
+        this.testRunner = testRunner
+        this.context = context
+        this.data.projectName = project.name
+    }
+
+    def collect() {
+        project.testSuiteList.each { suite ->
+            def suiteSnapshot = new TestSuiteSnapshot(suite, testRunner, context)
+            def suiteData = suiteSnapshot.collect()
+            data.testSuites << suiteData
+            
+            data.metrics.suiteCount++
+            data.metrics.caseCount += suiteSnapshot.testCaseCount
+            data.metrics.assertionCount += suiteSnapshot.assertionCount
+            data.metrics.stepCount += suiteSnapshot.stepCount
+            data.metrics.enabledStepCount += suiteSnapshot.enabledStepCount
+            data.metrics.passedStepCount += suiteSnapshot.passedSteps
+            data.metrics.failedStepCount += suiteSnapshot.failedSteps
+            data.metrics.passedCaseCount += suiteSnapshot.passedCases
+            data.metrics.failedCaseCount += suiteSnapshot.failedCases
+            
+            if (suiteData.status == 'failed') {
+                data.status = 'failed'
+            }
+        }
+
+        if (data.metrics.enabledStepCount > 0) {
+            data.metrics.coveragePercentage = (data.metrics.passedStepCount / data.metrics.enabledStepCount * 100).round(2)
+        }
+
+        return data
+    }
+}
+
+// Test Suite Snapshot Class
+class TestSuiteSnapshot {
+    def suite
+    def testCaseCount = 0
+    def assertionCount = 0
+    def stepCount = 0
+    def enabledStepCount = 0
+    def passedSteps = 0
+    def failedSteps = 0
+    def passedCases = 0
+    def failedCases = 0
+    def testRunner
+    def context
+
+    TestSuiteSnapshot(suite, testRunner, context) {
+        this.suite = suite
+        this.testRunner = testRunner
+        this.context = context
+    }
+
+    def collect() {
+        def suiteData = [
+            testSuiteName: suite.name,
+            disabled: suite.disabled,
+            status: 'passed',
+            testCases: []
+        ]
+
+        suite.testCaseList.each { testCase ->
+            def caseSnapshot = new TestCaseSnapshot(testCase, suite.disabled, testRunner, context)
+            def caseData = caseSnapshot.collect()
+            suiteData.testCases << caseData
+            
+            testCaseCount++
+            assertionCount += caseSnapshot.assertionCount
+            stepCount += caseSnapshot.stepCount
+            enabledStepCount += caseSnapshot.enabledStepCount
+            passedSteps += caseSnapshot.passedSteps
+            failedSteps += caseSnapshot.failedSteps
+            
+            if (caseData.status == 'failed') {
+                suiteData.status = 'failed'
+                failedCases++
+            } else {
+                passedCases++
+            }
+        }
+
+        return suiteData
+    }
+}
+
+// Test Case Snapshot Class
+class TestCaseSnapshot {
+    def testCase
+    def parentDisabled
+    def assertionCount = 0
+    def stepCount = 0
+    def enabledStepCount = 0
+    def passedSteps = 0
+    def failedSteps = 0
+    def testRunner
+    def context
+
+    TestCaseSnapshot(testCase, parentDisabled, testRunner, context) {
+        this.testCase = testCase
+        this.parentDisabled = parentDisabled
+        this.testRunner = testRunner
+        this.context = context
+    }
+
+    def collect() {
+        def testCaseData = [
+            testCaseName: testCase.name,
+            disabled: testCase.disabled || parentDisabled,
+            status: 'passed',
+            testSteps: []
+        ]
+
+        testCase.testStepList.each { step ->
+            def stepSnapshot = new TestStepSnapshot(step, testCaseData.disabled, testRunner, context)
+            def stepData = stepSnapshot.collect()
+            if (stepData) {  // Only add if step data exists
+                testCaseData.testSteps << stepData
+                stepCount++
+                if(!stepData.disabled) {
+                    enabledStepCount++
+                }
+                assertionCount += stepSnapshot.assertionCount
+                
+                if (stepData.statusCode == 'failed') {
+                    testCaseData.status = 'failed'
+                    failedSteps++
+                } else {
+                    passedSteps++
+                }
+            }
+        }
+
+        return testCaseData
+    }
+}
+
+// Test Step Snapshot Class
+class TestStepSnapshot {
+    def step
+    def parentDisabled
+    def testRunner
+    def context
+    def assertionCount = 0
+
+    TestStepSnapshot(step, parentDisabled, testRunner, context) {
+        this.step = step
+        this.parentDisabled = parentDisabled
+        this.testRunner = testRunner
+        this.context = context
+    }
+
+    def collect() {
+        // Only process REST steps
+        if (!(step instanceof com.eviware.soapui.impl.wsdl.teststeps.RestTestRequestStep)) {
+            log.info("ERROR: Skipping step ${step.name} as it is not a REST step")
+            return null
+        }
+
+        def notes = ''
+        try {
+            def testCase = step.testCase
+            if (testCase?.properties) {
+                def property = testCase.properties.get(step.name)
+                notes = property?.value ?: ''
+            }
+        } catch (Exception e) {
+            log.warn("Could not retrieve notes for step ${step.name}: ${e.message}")
+        }
+
+        def stepData = [
+            testStepName: step.name,
+            description: step.description ?: '',
+            notes: notes,
+            disabled: step.disabled || parentDisabled,
+            method: step.httpRequest.method.toString(),
+            endpoint: step.httpRequest.endpoint,
+            resource: step.resourcePath,
+            pathParams: [:],
+            queryParams: [:],
+            headers: [:],
+            requestBody: step.httpRequest.requestContent,
+            assertions: [],
+            statusCode: 'passed',
+            message: null
+        ]
+
+        // if (!stepData.disabled) {
+        //     try {
+        //         def result = step.run(testRunner, context)
+        //         stepData.statusCode = result.status.toString()
+        //         stepData.message = result.messages.toString()
+        //     } catch (Exception e) {
+        //         stepData.statusCode = 'failed'
+        //         stepData.message = e.message
+        //     }
+        // }
+        if (!stepData.disabled) {
+            try {
+                def result = step.run(testRunner, context)
+                // Only set initial status from result if it's a failure
+                if (result.status.toString() != 'OK') {
+                    stepData.statusCode = result.status.toString()
+                }
+                stepData.message = result.messages.toString()
+            } catch (Exception e) {
+                stepData.statusCode = 'failed'
+                stepData.message = e.message
+            }
+        }
+
+        // Collect path parameters
+        step.restMethod.params.propertyNames.each { name ->
+            stepData.pathParams[name] = step.restMethod.getPropertyValue(name)
+        }
+
+        // Collect headers
+        stepData.headers = step.httpRequest.requestHeaders
+
+        // Process assertions
+        step.assertionList.each { assertion ->
+            assertionCount++
+            def assertionData = [
+                type: assertion.label,
+                status: assertion.status.toString()
+            ]
+            
+            if (assertion.status.toString() != 'VALID') {
+                stepData.statusCode = 'failed'
+            }
+            
+            stepData.assertions << assertionData
+        }
+
+        return stepData
+    }
+}
+
+// Helper function to initialize folders
+def initializeFolder(File folder, Boolean clear = false) {
+    if (folder.exists()) {
+        if (clear) {
+            folder.eachFile { file ->
+                if (file.isDirectory()) {
+                    file.deleteDir()
+                } else {
+                    file.delete()
+                }
+            }
+            log.info("Cleared folder: ${folder.name}")
+        }
+    } else {
+        folder.mkdirs()
+        log.info("Created folder: ${folder.name}")
+    }
+}
+
+// Main processing function
+def processProjects(outputFolder, dateFolder) {
+    def currentProjectName = context.testCase.testSuite.project.name
+    
+    com.eviware.soapui.SoapUI.workspace.projectList
+        .findAll { it.name != currentProjectName }
+        .collectEntries { project ->
+            try {
+                def snapshot = new ProjectSnapshot(project, testRunner, context)
+                def projectData = snapshot.collect()
+                def timestamp = new Date().format('yyyy-MM-dd_HH-mm-ss', TimeZone.getTimeZone('UTC'))
+                
+                // Create project folder and write file in one operation
+                def projectFolder = new File(dateFolder, project.name).with { mkdirs(); it }
+                new File(projectFolder, "${timestamp}.json").with { 
+                    text = JsonOutput.prettyPrint(JsonOutput.toJson(projectData))
+                }
+                
+                log.info("Generated snapshot for project: ${project.name}")
+                [project.name, true]
+            } catch (Exception e) {
+                log.error("Failed to process project ${project.name}: ${e.message}")
+                log.error(e.stackTrace.join("\n"))
+                [project.name, false]
+            }
+        }
+}
+
+// Execute
+try {
+    initializeFolder(dateFolder, false)
+    processProjects(outputFolder, dateFolder)
+    UISupport.showInfoMessage("Snapshot(s) generated successfully")
+} catch (Exception e) {
+    log.error("Failed to generate snapshots: ${e.message}")
+    log.error(e.stackTrace.join("\n"))
+    UISupport.showErrorMessage("Failed to generate snapshots: ${e.message}")
+}]]></script></con:config>
+      </con:testStep><con:properties/>
+    </con:testCase>
+    <con:testCase id="180d16c4-1519-40c4-8a33-49e2205da17c" failOnError="true" failTestCaseOnErrors="true" keepSession="false" maxResults="0" name="General" searchProperties="true">
+      <con:settings/>
+      <con:testStep type="groovy" name="Turn off 'Abort on Error'" id="b1bb1c0e-071e-41dd-acb1-3b872badd8fd">
+        <con:description>Will turn off the 'Abort on error' option for test cases for ALL OPEN PROJECTS</con:description>
+        <con:settings/>
+        <con:config>
+          <script>import com.eviware.soapui.SoapUI
+import com.eviware.soapui.model.project.Project
+import com.eviware.soapui.model.testsuite.TestCase
+
+// Get the current project
+def currentProject = context.testCase.testSuite.project
+
+// Initialize a map to keep track of changes by project
+def changesMap = [:]
+
+// Iterate over all open projects
+SoapUI.workspace.getProjectList().each { Project project ->
+    if (project != currentProject) { // Exclude the current project
+        project.testSuiteList.each { testSuite ->
+            testSuite.testCaseList.each { TestCase testCase ->
+                try {
+                    // Check if 'Abort on Error' is enabled
+                    if (testCase.failOnError) {
+                        // Disable 'Abort on Error'
+                        testCase.failOnError = false
+                        // Add change to the map
+                        if (!changesMap.containsKey(project.name)) {
+                            changesMap[project.name] = []
+                        }
+                        changesMap[project.name] &lt;&lt; "TestCase: ${testCase.name} - 'Abort on Error' disabled"
+                    }
+                } catch (Exception e) {
+                    if (!changesMap.containsKey(project.name)) {
+                        changesMap[project.name] = []
+                    }
+                    changesMap[project.name] &lt;&lt; "TestCase: ${testCase.name} - Failed to change due to: ${e.message}"
+                }
+            }
+        }
+    }
+}
+
+// Print the summary of changes
+if (changesMap.isEmpty()) {
+    println "No changes were made."
+} else {
+    println "Summary of changes:"
+    changesMap.each { projectName, changes ->
+        println "Project: ${projectName}"
+        changes.each { change ->
+            println "  - ${change}"
+        }
+    }
+}</script>
+        </con:config>
+      </con:testStep>
+      <con:properties/>
+    </con:testCase>
+    <con:properties/>
+  </con:testSuite>
+  <con:properties/>
+  <con:wssContainer/>
+  <con:oAuth2ProfileContainer/>
+  <con:oAuth1ProfileContainer/>
+  <con:sensitiveInformation/>
+</con:soapui-project>
