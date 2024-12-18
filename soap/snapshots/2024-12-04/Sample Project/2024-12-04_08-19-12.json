@@ -1,0 +1,188 @@
+{
+    "projectName": "Sample Project",
+    "testSuites": [
+        {
+            "testSuiteName": "DEV",
+            "disabled": false,
+            "status": "passed",
+            "testCases": [
+                {
+                    "testCaseName": "Posts-Resource TestCase",
+                    "disabled": false,
+                    "status": "passed",
+                    "testSteps": [
+                        {
+                            "testStepName": "Request 1",
+                            "description": "",
+                            "notes": "",
+                            "disabled": false,
+                            "method": "GET",
+                            "endpoint": "https://my-json-server.typicode.com",
+                            "resource": "/typicode/demo/posts",
+                            "pathParams": {
+                                
+                            },
+                            "queryParams": {
+                                
+                            },
+                            "headers": {
+                                
+                            },
+                            "requestBody": "",
+                            "assertions": [
+                                {
+                                    "type": "Contains",
+                                    "status": "VALID"
+                                },
+                                {
+                                    "type": "Valid HTTP Status Codes",
+                                    "status": "VALID"
+                                },
+                                {
+                                    "type": "Contains 1",
+                                    "status": "VALID"
+                                }
+                            ],
+                            "statusCode": "passed",
+                            "message": "[]"
+                        }
+                    ]
+                },
+                {
+                    "testCaseName": "Comments-Resource TestCase",
+                    "disabled": false,
+                    "status": "passed",
+                    "testSteps": [
+                        {
+                            "testStepName": "Request 1",
+                            "description": "",
+                            "notes": "",
+                            "disabled": false,
+                            "method": "GET",
+                            "endpoint": "https://my-json-server.typicode.com",
+                            "resource": "/typicode/demo/comments",
+                            "pathParams": {
+                                
+                            },
+                            "queryParams": {
+                                
+                            },
+                            "headers": {
+                                
+                            },
+                            "requestBody": "",
+                            "assertions": [
+                                {
+                                    "type": "Contains",
+                                    "status": "VALID"
+                                },
+                                {
+                                    "type": "Valid HTTP Status Codes",
+                                    "status": "VALID"
+                                }
+                            ],
+                            "statusCode": "passed",
+                            "message": "[]"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "testSuiteName": "SAT",
+            "disabled": false,
+            "status": "passed",
+            "testCases": [
+                {
+                    "testCaseName": "Posts-Resource TestCase",
+                    "disabled": false,
+                    "status": "passed",
+                    "testSteps": [
+                        {
+                            "testStepName": "Request 1",
+                            "description": "",
+                            "notes": "",
+                            "disabled": true,
+                            "method": "GET",
+                            "endpoint": "https://my-json-server.typicode.com",
+                            "resource": "/typicode/demo/posts",
+                            "pathParams": {
+                                
+                            },
+                            "queryParams": {
+                                
+                            },
+                            "headers": {
+                                
+                            },
+                            "requestBody": "",
+                            "assertions": [
+                                {
+                                    "type": "Contains",
+                                    "status": "VALID"
+                                },
+                                {
+                                    "type": "Valid HTTP Status Codes",
+                                    "status": "VALID"
+                                }
+                            ],
+                            "statusCode": "passed",
+                            "message": null
+                        }
+                    ]
+                },
+                {
+                    "testCaseName": "Comments-Resource TestCase",
+                    "disabled": false,
+                    "status": "passed",
+                    "testSteps": [
+                        {
+                            "testStepName": "Request 1",
+                            "description": "",
+                            "notes": "",
+                            "disabled": false,
+                            "method": "GET",
+                            "endpoint": "https://my-json-server.typicode.com",
+                            "resource": "/typicode/demo/comments",
+                            "pathParams": {
+                                
+                            },
+                            "queryParams": {
+                                
+                            },
+                            "headers": {
+                                
+                            },
+                            "requestBody": "",
+                            "assertions": [
+                                {
+                                    "type": "Contains",
+                                    "status": "VALID"
+                                },
+                                {
+                                    "type": "Valid HTTP Status Codes",
+                                    "status": "VALID"
+                                }
+                            ],
+                            "statusCode": "passed",
+                            "message": "[]"
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "metrics": {
+        "projectStatus": "failed",
+        "suiteCount": 2,
+        "caseCount": 4,
+        "passedCaseCount": 3,
+        "failedCaseCount": 1,
+        "assertionCount": 9,
+        "stepCount": 4,
+        "enabledStepCount": 3,
+        "passedStepCount": 3,
+        "failedStepCount": 1,
+        "coveragePercentage": 100.00
+    }
+}

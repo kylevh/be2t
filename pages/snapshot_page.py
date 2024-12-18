@@ -142,8 +142,12 @@ class SnapshotPage(BaseComponent):
             for test_case in suite['testCases']:
                 for step in test_case['testSteps']:
                     # Prepare the data for each step
-                    dev_coverage = step.get('devCoverage', '')
-                    sat_coverage = step.get('satCoverage', '')
+                    test_status = 'DISABLED' if step.get('disabled', False) else (
+                        'YES' if step.get('statusCode', '').lower() == 'passed' 
+                        else 'NO' if step.get('statusCode', '').lower() == 'failed'
+                        else '')
+                    dev_coverage = test_status if is_dev else ''
+                    sat_coverage = test_status if is_sat else ''
                     data_methods = []
                     
                     # Extract data methods if they exist
@@ -157,8 +161,8 @@ class SnapshotPage(BaseComponent):
                     # Create row values tuple
                     row_values = (
                         step_id,
-                        dev_coverage if is_dev else '',
-                        sat_coverage if is_sat else '',
+                        test_status if is_dev else '',
+                        test_status if is_sat else '',
                         step['resource'],
                         test_case['testCaseName'],
                         step['method'],

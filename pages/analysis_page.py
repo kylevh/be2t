@@ -54,30 +54,31 @@ class AnalysisPage(BaseComponent):
             self.draw_no_data()
             return
             
-        # Calculate date range
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=29)
+        # Get coverage data for both DEV and SAT suites
+        dev_coverage_data = self.get_coverage_data(current_project, 'DEV')
+        sat_coverage_data = self.get_coverage_data(current_project, 'SAT')
         
-        # Remove the date range calculation since we'll use actual data points
-        coverage_data = self.get_coverage_data(current_project, None, None)
-        if not coverage_data:
+        if not dev_coverage_data and not sat_coverage_data:
             self.draw_no_data()
             return
 
-        self.draw_graph(coverage_data)
+        self.draw_graph(dev_coverage_data, sat_coverage_data)
+
         
-    def get_coverage_data(self, project, start_date, end_date):
-        return self.snapshot_processor.get_coverage_over_time(project)
-        
-    def draw_graph(self, coverage_data):
+    def get_coverage_data(self, project, suite):
+        return self.snapshot_processor.get_coverage_over_time_for_suite(project, suite)
+
+    def draw_graph(self, dev_coverage_data, sat_coverage_data):
         # Graph dimensions
         padding = 50
         graph_width = self.canvas_width - (padding * 2)
         graph_height = self.canvas_height - (padding * 2)
 
-        # Filter out days with 0 coverage and get sorted dates
-        valid_dates = sorted([date for date, coverage in coverage_data.items() if coverage > 0])
-        if not valid_dates:
+        # Filter out days with 0 coverage and get sorted dates for both suites
+        dev_valid_dates = sorted([date for date, coverage in dev_coverage_data.items() if coverage > 0])
+        sat_valid_dates = sorted([date for date, coverage in sat_coverage_data.items() if coverage > 0])
+        
+        if not dev_valid_dates and not sat_valid_dates:
             self.draw_no_data()
             return
         
@@ -105,7 +106,13 @@ class AnalysisPage(BaseComponent):
                 fill="#cccccc"
             )
         
-       # Plot data points
+        # Plot data points for DEV suite
+        self.plot_data_points(dev_valid_dates, dev_coverage_data, graph_width, graph_height, padding, "#007bff", "DEV")
+        
+        # Plot data points for SAT suite
+        self.plot_data_points(sat_valid_dates, sat_coverage_data, graph_width, graph_height, padding, "#ff0000", "SAT")
+
+    def plot_data_points(self, valid_dates, coverage_data, graph_width, graph_height, padding, color, suite_name):
         points = []
         for i, date in enumerate(valid_dates):
             x = padding + (i / (len(valid_dates) - 1 if len(valid_dates) > 1 else 1) * graph_width)
@@ -113,11 +120,11 @@ class AnalysisPage(BaseComponent):
             points.append((x, y))
 
             # Draw point and bind hover events
-            point_id = self.canvas.create_oval(x-3, y-3, x+3, y+3, fill="#007bff", tags=f"point_{i}")
-            self.canvas.tag_bind(f"point_{i}", '<Enter>', 
+            point_id = self.canvas.create_oval(x-3, y-3, x+3, y+3, fill=color, tags=f"point_{suite_name}_{i}")
+            self.canvas.tag_bind(f"point_{suite_name}_{i}", '<Enter>', 
                 lambda e, date=date, coverage=coverage_data[date], x=x, y=y: 
                 self.show_tooltip(e, date, coverage, x, y))
-            self.canvas.tag_bind(f"point_{i}", '<Leave>', self.hide_tooltip)
+            self.canvas.tag_bind(f"point_{suite_name}_{i}", '<Leave>', self.hide_tooltip)
             
             # Draw date label (adjust frequency based on number of points)
             label_frequency = max(1, len(valid_dates) // 6)  # Show ~6 labels
@@ -128,17 +135,12 @@ class AnalysisPage(BaseComponent):
                     angle=45
                 )
         
-        # Update title based on date range
-        if len(valid_dates) > 0:
-            date_range = f"({valid_dates[0]} to {valid_dates[-1]})"
-            self.title_label.config(text=f"Backend Test Coverage {date_range}")
-        
         # Draw lines between points
         for i in range(len(points) - 1):
             x1, y1 = points[i]
             x2, y2 = points[i + 1]
-            self.canvas.create_line(x1, y1, x2, y2, fill="#007bff", width=2)
-
+            self.canvas.create_line(x1, y1, x2, y2, fill=color, width=2)
+            
     def show_tooltip(self, event, date, coverage, x, y):
         self.tooltip.config(text=f"Date: {date}\nCoverage: {coverage:.1f}%")
         # Position tooltip above the point

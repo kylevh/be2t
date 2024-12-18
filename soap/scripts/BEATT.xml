@@ -477,7 +477,7 @@ class ProjectSnapshot {
             data.metrics.failedCaseCount += suiteSnapshot.failedCases
             
             if (suiteData.status == 'failed') {
-                data.status = 'failed'
+                data.metrics.projectStatus = 'failed'
             }
         }
 

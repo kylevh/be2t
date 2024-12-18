@@ -42,8 +42,10 @@ class SnapshotProcessor:
 
     def _update_state(self) -> None:
         """Update the global state with snapshot information"""
+        # RENABLE
         self.state_manager.set_state('snapshots.all_projects', sorted(list(self.projects)))
         self.state_manager.set_state('snapshots.all_dates', sorted(list(self.dates)))
+
         # self.state_manager.set_state('snapshots', {
         #     'all_projects': sorted(list(self.projects)),
         #     'all_dates': sorted(list(self.dates)),
@@ -68,6 +70,7 @@ class SnapshotProcessor:
             if current_date:
                 current_snapshot = self.get_latest_snapshot_for_date(project_name, current_date)
 
+        # REENABLE
         self.state_manager.set_state('snapshots.current_project', project_name)
         self.state_manager.set_state('snapshots.current_date', current_date)
         self.state_manager.set_state('snapshots.current_snapshot', current_snapshot)
@@ -120,29 +123,16 @@ class SnapshotProcessor:
         
         return latest_date, latest_snapshot
 
-    def get_coverage_over_time(self, project_name: str, days: int = 30) -> Dict[str, float]:
-        """Get coverage data for a project over the specified number of days
-        
-        Args:
-            project_name: Name of the project to get coverage for
-            days: Number of days to look back (default 30)
-            
-        Returns:
-            Dictionary mapping dates (YYYY-MM-DD) to coverage percentages
-        """
+    def get_coverage_over_time_for_suite(self, project_name: str, test_suite_name: str, days: int = 30) -> Dict[str, float]:
+        """Get coverage data for a specific test suite of a project over the specified number of days."""
         from datetime import datetime, timedelta
         
         # Calculate date range
         end_date = datetime.now()
-        start_date = end_date - timedelta(days=days-1)  # -1 because we want to include today
+        start_date = end_date - timedelta(days=days-1)
         
-        # Initialize coverage data dictionary with 0s for all dates
-        coverage_data = {}
-        current_date = start_date
-        while current_date <= end_date:
-            date_str = current_date.strftime("%Y-%m-%d")
-            coverage_data[date_str] = 0.0
-            current_date += timedelta(days=1)
+        # Initialize coverage data dictionary
+        coverage_data = self._initialize_coverage_data(start_date, end_date)
         
         # Get all snapshots for this project within date range
         for date_str in self.dates:
@@ -150,30 +140,76 @@ class SnapshotProcessor:
             if start_date <= snapshot_date <= end_date:
                 project_path = os.path.join(self.snapshot_dir, date_str, project_name)
                 if os.path.exists(project_path):
-                    # Get latest snapshot for this date
                     latest_snapshot = self.get_latest_snapshot_for_date(project_name, date_str)
                     if latest_snapshot:
-                        try:
-                            # Read and parse the snapshot file
-                            snapshot_path = os.path.join(project_path, latest_snapshot)
-                            with open(snapshot_path, 'r') as f:
-                                data = json.load(f)
-                                # Extract coverage from metrics
-                                coverage = data.get('metrics', {}).get('coveragePercentage', 0.0)
-                                coverage_data[date_str] = float(coverage)
-                        except (json.JSONDecodeError, FileNotFoundError, KeyError) as e:
-                            print(f"Error processing snapshot for {date_str}: {str(e)}")
-                            continue
+                        coverage_data[date_str] = self._calculate_coverage_for_snapshot(project_path, latest_snapshot, test_suite_name)
         
         return coverage_data
 
+    def _initialize_coverage_data(self, start_date: datetime, end_date: datetime) -> Dict[str, float]:
+        """Initialize a dictionary with dates as keys and 0.0 as default coverage values."""
+        from datetime import timedelta
+        
+        coverage_data = {}
+        current_date = start_date
+        while current_date <= end_date:
+            date_str = current_date.strftime("%Y-%m-%d")
+            coverage_data[date_str] = 0.0
+            current_date += timedelta(days=1)
+        
+        return coverage_data
 
-# if __name__ == "__main__":
-#     # Create processor instance
-#     processor = SnapshotProcessor()
-#     processor._scan_snapshots()
-#     print("all projects:", processor.get_all_projects())
-#     print("all dates:", processor.get_all_dates())
+    def _calculate_coverage_for_snapshot(self, project_path: str, snapshot_filename: str, test_suite_name: str) -> float:
+        """Calculate the coverage percentage for a given snapshot and test suite."""
+        snapshot_path = os.path.join(project_path, snapshot_filename)
+        try:
+            with open(snapshot_path, 'r') as f:
+                data = json.load(f)
+                suite = self._find_test_suite(data, test_suite_name)
+                if suite:
+                    return self._compute_coverage_percentage(suite)
+        except (json.JSONDecodeError, FileNotFoundError, KeyError) as e:
+            print(f"Error processing snapshot at {snapshot_path}: {str(e)}")
+        
+        return 0.0
 
-#     print("project dates:", processor.get_project_dates("Sample Project"))
-#     print("latest snapshot:", processor.get_latest_snapshot("Sample Project"))
+    def _find_test_suite(self, data: dict, test_suite_name: str) -> dict:
+        """Find and return the test suite with the given name from the snapshot data."""
+        for suite in data.get('testSuites', []):
+            if suite.get('testSuiteName') == test_suite_name:
+                return suite
+        return None
+
+    def _compute_coverage_percentage(self, suite: dict) -> float:
+        """Compute the coverage percentage for a given test suite."""
+        total_enabled_steps = 0
+        total_passed_steps = 0
+        
+        for test_case in suite.get('testCases', []):
+            if test_case.get('disabled', False):
+                continue  # Skip disabled test cases
+            
+            for step in test_case.get('testSteps', []):
+                if step.get('disabled', False):
+                    continue  # Skip disabled test steps
+                
+                total_enabled_steps += 1
+                if step.get('statusCode') == 'passed':
+                    total_passed_steps += 1
+        
+        if total_enabled_steps > 0:
+            return round((total_passed_steps / total_enabled_steps) * 100, 2)
+        
+        return 0.0
+
+
+if __name__ == "__main__":
+    # Create processor instance
+    processor = SnapshotProcessor()
+    processor._scan_snapshots()
+    print("all projects:", processor.get_all_projects())
+    print("all dates:", processor.get_all_dates())
+
+    print("project dates:", processor.get_project_dates("Sample Project"))
+    print("latest snapshot:", processor.get_latest_snapshot("Sample Project"))
+    print("coverage over time:", processor.get_coverage_over_time_for_suite("Sample Project", "DEV"))

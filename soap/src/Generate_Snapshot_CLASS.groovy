@@ -8,6 +8,9 @@ def dateFolder = new File(outputFolder, new Date().format('yyyy-MM-dd', TimeZone
 
 // Project Snapshot Class
 class ProjectSnapshot {
+    static final def DEV_SUITE_PATTERNS = ['DEV', 'Dev']
+    static final def SAT_SUITE_PATTERNS = ['SAT', 'Sat']
+    
     def project
     def testRunner
     def context
@@ -25,7 +28,30 @@ class ProjectSnapshot {
             enabledStepCount: 0,
             passedStepCount: 0,
             failedStepCount: 0,
-            coveragePercentage: 0
+            coveragePercentage: 0,
+            devMetrics: [
+                passedCaseCount: 0,
+                failedCaseCount: 0,
+                enabledCaseCount: 0,
+                totalCaseCount: 0,
+                enabledStepCount: 0,
+                totalStepCount: 0,
+                passedStepCount: 0,
+                failedStepCount: 0,
+                coveragePercentage: 0
+            ],
+            // Add new SAT metrics
+            satMetrics: [
+                passedCaseCount: 0,
+                failedCaseCount: 0,
+                enabledCaseCount: 0,
+                totalCaseCount: 0,
+                enabledStepCount: 0,
+                totalStepCount: 0,
+                passedStepCount: 0,
+                failedStepCount: 0,
+                coveragePercentage: 0
+            ]
         ],
     ]
 

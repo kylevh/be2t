@@ -1,14 +1,14 @@
-# Snapshot Analyzer
+# BE Automation Internal Tool
 
 A Python-based desktop application for analyzing and viewing snapshots of backend testing coverage data using tkinter gui.
 
 ## Project Overview
 
-The Snapshot Analyzer allows users to:
-- Browse projects and their snapshots through an calendar
+The BE Automation Internal Tool allows users to:
+- Browse projects and their snapshots through a calendar
 - View snapshot data for specific dates
-- Generate .xlsx files from snapshot data
-- View coverage over time
+- Generate .csv files from snapshot data
+- View coverage over time in a simple graph format
 
 ## Prerequisites
 
